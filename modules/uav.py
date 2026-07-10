@@ -96,13 +96,15 @@ class UAV():
 
         # It might be a good not load the entire database each time XD
         f = open("./files/devices.yaml", "r")
-        try:
-            data = load(f, Loader=Loader)[model]
-        except:
-            # Load this one by default if the requested category is not right
-            data = load(f, Loader=Loader)["dji_M300"]
-
+        database = load(f, Loader=Loader)
         f.close()
+
+        try:
+            data = database[model]
+        except KeyError:
+            # Load this one by default if the requested category is not right
+            print(f"Model '{model}' not found in devices.yaml. Falling back to dji_M300")
+            data = database["dji_M300"]
 
         try:
             if case not in data["compatible_cases"]:
