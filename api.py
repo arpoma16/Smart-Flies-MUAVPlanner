@@ -177,12 +177,27 @@ def mission_Request() -> dict | None:
     try:
         mission =  request.get_json()
     except:
-        output = {"output": "Not a JSON"}
+        return {"output": "Not a JSON"}
+
+    # Early check: warn (but do NOT block) if any device category is unknown.
+    # It will still be planned with the default dji_M300 model.
+    warnings = []
+    known_models = UAVS.get_known_Models()
+    for device in mission.get("devices", []):
+        if device.get("category") not in known_models:
+            warnings.append(
+                f"Device category '{device.get('category')}' (id {device.get('id')}) "
+                f"is not recognized; it will be planned with the default dji_M300 model")
 
     thread = threading.Thread(target=planner, kwargs={'mission_json': mission})
     thread.start()
 
-    return {"output": "JSON Received. Computing..."}
+    output = {"output": "JSON Received. Computing..."}
+    if warnings:
+        output["status"] = "computing_with_warnings"
+        output["warnings"] = warnings
+
+    return output
 
 def planner(mission_json):
     """
@@ -199,31 +214,36 @@ def planner(mission_json):
 
     pprint(mission_json)
 
-    
-    bases, towers, uavs, weather, mode, id, parameters = iYAML.load_data_from_JSON(mission_json)
-
-    problem = SO.Problem(str(id), towers, bases, uavs, weather, mode, Parameters = parameters)
-
-    status = problem.solve("abstract_MTZ", True)
-
+    # Resolve the output path first so we can report errors to it no matter what fails
+    id = mission_json.get("id", "unknown")
     file_path = os.path.join("server", "dynamic", "mission_"+str(id)+".yaml")
 
-    if False == status:
+    try:
+        bases, towers, uavs, weather, mode, id, parameters, warnings = iYAML.load_data_from_JSON(mission_json)
+        file_path = os.path.join("server", "dynamic", "mission_"+str(id)+".yaml")
+
+        problem = SO.Problem(str(id), towers, bases, uavs, weather, mode, Parameters = parameters)
+
+        status = problem.solve("abstract_MTZ", True)
+
+        if False == status:
+            iYAML.save_Dict_to_File({str(id): "Planner failed: infeasibility"}, file_path)
+            return None
+
+        problem.get_UAV_Team().compute_Team_Waypoints(problem.get_Mission_Mode(),
+                                                        problem.get_Towers(),
+                                                        problem.get_Bases(),
+                                                        weather.get_Wind_Direction())
+            #base0 = problem.get_Bases().get_Base("B0")
+        iYAML.save_Mission(file_path, str(id), problem.get_UAV_Team(), warnings=warnings)
+
+    except Exception as e:
+        # Never let the planner thread die silently: report the failure to the mission file
+        print(f"Planner thread failed for mission {id}: {e}")
+        iYAML.save_Dict_to_File({str(id): f"Planner failed: {e}"}, file_path)
+
+    finally:
         app.set_Status("inactive")
-        iYAML.save_Dict_to_File({str(id): "Planner failed: infeasibility"}, file_path)
-
-    problem.get_UAV_Team().compute_Team_Waypoints(problem.get_Mission_Mode(),
-                                                    problem.get_Towers(),
-                                                    problem.get_Bases(),
-                                                    weather.get_Wind_Direction())
-        #base0 = problem.get_Bases().get_Base("B0")       
-    iYAML.save_Mission(file_path, str(id), problem.get_UAV_Team())
-    app.set_Status("inactive")
-
-    #except:
-
-    #    app.set_Status("inactive")
-    #    iYAML.save_Dict_to_File({"error": "JSON Format not valid or the planner failed"}, file_path)
 
     return None
 

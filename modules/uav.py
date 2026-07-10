@@ -8,6 +8,19 @@ import copy
 from modules import waypoints as WP, coordinates as CO, towers as TW, bases as BA, dubins as DB
 
 
+DEVICES_FILE = "./files/devices.yaml"
+
+
+def get_known_Models() -> list:
+    """
+    Returns the list of device categories registered in devices.yaml.
+    Used to warn early (before planning) about unknown categories.
+    """
+    with open(DEVICES_FILE, "r") as f:
+        database = load(f, Loader=Loader)
+    return list(database.keys())
+
+
 class UAV_Battery():
     def __init__(self, Type: str = " ", Cap: float = 0.0, Cells: int = 0, VpC: float = 0.0):
         self.type = Type
@@ -95,15 +108,19 @@ class UAV():
     def load_from_Model(self, model: str, id: str, case: int) -> bool:
 
         # It might be a good not load the entire database each time XD
-        f = open("./files/devices.yaml", "r")
+        f = open(DEVICES_FILE, "r")
         database = load(f, Loader=Loader)
         f.close()
+
+        # Flag so callers/output can tell an unknown model was planned with defaults
+        self.fallback_used = False
 
         try:
             data = database[model]
         except KeyError:
-            # Load this one by default if the requested category is not right
+            # Plan anyway with the default model instead of crashing the planner
             print(f"Model '{model}' not found in devices.yaml. Falling back to dji_M300")
+            self.fallback_used = True
             data = database["dji_M300"]
 
         try:

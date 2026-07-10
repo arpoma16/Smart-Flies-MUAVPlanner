@@ -60,6 +60,23 @@ def print_Description(file, text: str):
 
     return None
 
+def print_Warnings(file, warnings: list):
+    """
+    Writes the planner warnings as a dedicated YAML list field.
+    Emits an empty list when there are none so the field is always present.
+    """
+    if not warnings:
+        file.write("warnings: []\n")
+        return None
+
+    file.write("warnings:\n")
+    for warning in warnings:
+        # Escape quotes so a warning message never breaks the YAML
+        safe = str(warning).replace("\"", "'")
+        file.write("  - \""+safe+"\"\n")
+
+    return None
+
 def print_Route(file, uav: UAVS.UAV):
     """
     Writes the route of one UAV to a file
@@ -123,9 +140,11 @@ def save_Dict_to_File(data: dict, file_path: str):
 
     return None
 
-def save_Mission(file_path, mission_id: str, uavs: UAVS.UAV_Team):
+def save_Mission(file_path, mission_id: str, uavs: UAVS.UAV_Team, warnings: list = None):
     """
-    Save the mission to a YAML file in the specified file path
+    Save the mission to a YAML file in the specified file path.
+    Any warnings (e.g. an unknown device planned with the default model)
+    are written into a dedicated 'warnings' field so the client can surface them.
     """
 
     if os.path.isfile(file_path):
@@ -135,6 +154,7 @@ def save_Mission(file_path, mission_id: str, uavs: UAVS.UAV_Team):
 
         print_Header(f, mission_id)
         print_Description(f, "")
+        print_Warnings(f, warnings)
         print_Routes(f, uavs)
 
     f.close()
@@ -303,14 +323,21 @@ def load_data_from_JSON(json_obj) -> tuple[BA.Bases, TW.Towers, UAVS.UAV_Team, W
     uavs.empty()
 
     # Load the UAVs
+    warnings = []
     k = 0
     for uav_dict in json_obj["devices"]:
 
         uav = UAVS.UAV()
         compatibleQ = uav.load_from_Model(uav_dict["category"], str(uav_dict["id"]), json_obj["case"])
 
+        # An unknown device is still planned, but with the default model. Flag it.
+        if getattr(uav, "fallback_used", False):
+            warnings.append(
+                f"Device category '{uav_dict['category']}' (id {uav_dict['id']}) "
+                f"was not recognized; planned with the default dji_M300 model")
+
         # If the model is not compatible with current use case.
-        if not compatibleQ: 
+        if not compatibleQ:
             print(f"UAV {uav_dict['category']} is not compatible with use case {json_obj['case']}")
             continue
 
@@ -401,7 +428,7 @@ def load_data_from_JSON(json_obj) -> tuple[BA.Bases, TW.Towers, UAVS.UAV_Team, W
     # This is then loaded into the problem with **kwargs as Parameters
     mode_parameters = {}
 
-    return bases, towers, uavs, weather, json_obj["case"], json_obj["id"], mode_parameters
+    return bases, towers, uavs, weather, json_obj["case"], json_obj["id"], mode_parameters, warnings
 
 # This still uses the generic waypoint system to allow the implementation of YAMLs 
 # for px4 in the future
