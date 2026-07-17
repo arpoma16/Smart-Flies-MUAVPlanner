@@ -543,7 +543,7 @@ class UAV():
 
                 point = np.append(self.routeCoords[0][0][:2], fH)
 
-                actions = {"video_start": 0,
+                actions = {"video_stop": 0,
                            "gimbal": gimbal, "yaw": yaw, "mode": 0}
                 self.waypoints.add_Waypoint(point, actions, "Navigation")
 
@@ -701,7 +701,7 @@ class UAV():
                 actions = {"gimbal": gimbal, "yaw": yaw, "mode": 0}
                 self.waypoints.add_Waypoint(
                     np.append(self.routeCoords[0][0][:2], tH + iH + dH), actions, "Navigation")
-                actions = {"video_start": False,
+                actions = {"video_stop": 0,
                            "gimbal": gimbal, "yaw": yaw, "mode": 0}
                 self.waypoints.add_Waypoint(
                     np.append(self.routeCoords[0][0][:2], fH), actions, "Navigation")
